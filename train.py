@@ -64,9 +64,11 @@ def train_epoch(data_loader, predictor, planner, optimizer, use_planning):
         current_state = torch.cat([ego.unsqueeze(1), neighbors[..., :-1]], dim=1)[:, :, -1]
         weights = torch.ne(ground_truth[:, 1:, :, :3], 0)
 
+        ego_future = ground_truth[:, 0, :, :2]
+
         # predict
         optimizer.zero_grad()
-        plans, predictions, scores, cost_function_weights = predictor(ego, neighbors, map_lanes, map_crosswalks)
+        plans, predictions, scores, cost_function_weights = predictor(ego, neighbors, map_lanes, map_crosswalks, ego_future)
         plan_trajs = torch.stack([bicycle_model(plans[:, i], ego[:, -1])[:, :, :3] for i in range(3)], dim=1)
         loss = MFMA_loss(plan_trajs, predictions, scores, ground_truth, weights) # multi-future multi-agent loss
         
@@ -138,9 +140,11 @@ def valid_epoch(data_loader, predictor, planner, use_planning):
         current_state = torch.cat([ego.unsqueeze(1), neighbors[..., :-1]], dim=1)[:, :, -1]
         weights = torch.ne(ground_truth[:, 1:, :, :3], 0)
 
+        ego_future = ground_truth[:, 0, :, :2]
+
         # predict
         with torch.no_grad():
-            plans, predictions, scores, cost_function_weights = predictor(ego, neighbors, map_lanes, map_crosswalks)
+            plans, predictions, scores, cost_function_weights = predictor(ego, neighbors, map_lanes, map_crosswalks, ego_future)
             plan_trajs = torch.stack([bicycle_model(plans[:, i], ego[:, -1])[:, :, :3] for i in range(3)], dim=1)
             loss = MFMA_loss(plan_trajs, predictions, scores, ground_truth, weights) # multi-future multi-agent loss
 
@@ -200,6 +204,7 @@ def model_training():
     logging.info("------------- {} -------------".format(args.name))
     logging.info("Batch size: {}".format(args.batch_size))
     logging.info("Learning rate: {}".format(args.learning_rate))
+    logging.info("Use ego info. handling model: {}".format(args.future_model))
     logging.info("Use integrated planning module: {}".format(args.use_planning))
     logging.info("Use device: {}".format(args.device))
 
@@ -207,7 +212,7 @@ def model_training():
     set_seed(args.seed)
 
     # set up predictor
-    predictor = Predictor(50).to(args.device)
+    predictor = Predictor(50, future_model=args.future_model).to(args.device)
     
     # set up planner
     if args.use_planning:
@@ -318,8 +323,8 @@ if __name__ == "__main__":
     # Arguments
     parser = argparse.ArgumentParser(description='Training')
     parser.add_argument('--name', type=str, help='log name (default: "Exp1")', default="Exp1")
-    parser.add_argument('--train_set', type=str, help='path to train datasets')
-    parser.add_argument('--valid_set', type=str, help='path to validation datasets')
+    parser.add_argument('--train_set', type=str, help='path to train datasets', default='/home/zxc/Documents/Waymo/processed_normalized_10percent')
+    parser.add_argument('--valid_set', type=str, help='path to validation datasets', default='/home/zxc/Documents/Waymo/processed_normalized_10percent')
     parser.add_argument('--seed', type=int, help='fix random seed', default=42)
     parser.add_argument("--num_workers", type=int, default=8, help="number of workers used for dataloader")
     parser.add_argument('--pretrain_epochs', type=int, help='epochs of pretraining predictor', default=5)
@@ -327,6 +332,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, help='batch size (default: 32)', default=32)
     parser.add_argument('--learning_rate', type=float, help='learning rate (default: 2e-4)', default=2e-4)
     parser.add_argument('--use_planning', action="store_true", help='if use integrated planning module (default: False)', default=False)
+    parser.add_argument('--future_model', type=str, help='DIPP or SelfAttention or CrossTransformer', default='DIPP')
     parser.add_argument('--device', type=str, help='run on which device (default: cuda)', default='cuda')
     args = parser.parse_args()
 

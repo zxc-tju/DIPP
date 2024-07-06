@@ -14,6 +14,16 @@ class AgentEncoder(nn.Module):
 
         return output
 
+class AVActionEncoder(nn.Module):
+    def __init__(self):
+        super(AVActionEncoder, self).__init__()
+        self.action_net = nn.LSTM(2, 256, 3, batch_first=True)
+
+    def forward(self, actions):
+        action, _ = self.action_net(actions[:, :, :2].to(dtype=torch.float))
+        output = action[:,-1]
+        return output
+    
 # Local context encoders
 class LaneEncoder(nn.Module):
     def __init__(self):
@@ -123,12 +133,39 @@ class Agent2Map(nn.Module):
 
         return map_actor, output 
 
+class Action2Action(nn.Module):
+    def __init__(self):
+        super(Action2Action, self).__init__()
+        encoder_layer = nn.TransformerEncoderLayer(d_model=256, nhead=8, dim_feedforward=1024, activation='relu', batch_first=True)
+        self.interaction_net = nn.TransformerEncoder(encoder_layer, num_layers=2)
+
+    def forward(self, inputs, mask=None):
+        output = self.interaction_net(inputs, src_key_padding_mask=mask)
+
+        return output
+
+class FutureTrajectoryTransformer(nn.Module):
+    def __init__(self):
+        super(FutureTrajectoryTransformer, self).__init__()
+        self.actor_interaction_to_ego_action = CrossTransformer()
+
+    def forward(self, agent_interaction, ego_action, mask=None):
+        query = ego_action
+        output = self.actor_interaction_to_ego_action(query, agent_interaction, agent_interaction, mask)
+
+        return output 
+    
 # Decoders
 class AgentDecoder(nn.Module):
-    def __init__(self, future_steps):
+    def __init__(self, future_steps, model_type='DIPP'):
         super(AgentDecoder, self).__init__()
         self._future_steps = future_steps 
-        self.decode = nn.Sequential(nn.Dropout(0.1), nn.Linear(512, 256), nn.ELU(), nn.Linear(256, future_steps*3))
+        self.model_type = model_type
+        if model_type in {'CrossTransformer', 'SelfAttention'}:
+            emb_dim = 768
+        elif model_type in {'DIPP'}:
+            emb_dim = 512
+        self.decode = nn.Sequential(nn.Dropout(0.1), nn.Linear(emb_dim, 256), nn.ELU(), nn.Linear(256, future_steps*3))
 
     def transform(self, prediction, current_state):
         x = current_state[:, 0] 
@@ -144,8 +181,14 @@ class AgentDecoder(nn.Module):
 
         return traj
        
-    def forward(self, agent_map, agent_agent, current_state):
-        feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1, 1)], dim=-1)
+    def forward(self, agent_map, agent_agent, current_state, action_ego_related=None):
+        if self.model_type in {'CrossTransformer'}:
+            feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1, 1), action_ego_related.unsqueeze(1).repeat(1, 3, 10, 1)], dim=-1)
+        elif self.model_type in {'SelfAttention'}:
+            feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1, 1), action_ego_related.unsqueeze(1).repeat(1, 3, 10, 1)], dim=-1)
+        elif self.model_type in {'DIPP'}:
+            feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1, 1)], dim=-1)
+
         decoded = self.decode(feature).view(-1, 3, 10, self._future_steps, 3)
         trajs = torch.stack([self.transform(decoded[:, i, j], current_state[:, j]) for i in range(3) for j in range(10)], dim=1)
         trajs = torch.reshape(trajs, (-1, 3, 10, self._future_steps, 3))
@@ -191,14 +234,16 @@ class Score(nn.Module):
 
 # Build predictor
 class Predictor(nn.Module):
-    def __init__(self, future_steps):
+    def __init__(self, future_steps, future_model='CrossTransformer'):
         super(Predictor, self).__init__()
         self._future_steps = future_steps
+        self.structure = future_model
 
         # agent layer
         self.vehicle_net = AgentEncoder()
         self.pedestrian_net = AgentEncoder()
         self.cyclist_net = AgentEncoder()
+        self.av_action_net = AVActionEncoder()
 
         # map layer
         self.lane_net = LaneEncoder()
@@ -210,12 +255,17 @@ class Predictor(nn.Module):
 
         # decode layers
         self.plan = AVDecoder(self._future_steps)
-        self.predict = AgentDecoder(self._future_steps)
+        self.predict = AgentDecoder(self._future_steps, model_type=future_model)
         self.score = Score()
 
-    def forward(self, ego, neighbors, map_lanes, map_crosswalks):
+        # ego-future-related layers
+        self.action_agent = FutureTrajectoryTransformer()
+        self.action_action = Action2Action()
+
+    def forward(self, ego, neighbors, map_lanes, map_crosswalks, ego_future):
         # actors
         ego_actor = self.vehicle_net(ego)
+        ego_future_action = self.av_action_net(ego_future).unsqueeze(1)
         vehicles = torch.stack([self.vehicle_net(neighbors[:, i]) for i in range(10)], dim=1) 
         pedestrians = torch.stack([self.pedestrian_net(neighbors[:, i]) for i in range(10)], dim=1) 
         cyclists = torch.stack([self.cyclist_net(neighbors[:, i]) for i in range(10)], dim=1)
@@ -246,10 +296,27 @@ class Predictor(nn.Module):
         map_feature = torch.stack(map_feature, dim=1)
         agent_map = torch.stack(agent_map, dim=2)
 
-        # plan + prediction 
-        plans, cost_function_weights = self.plan(agent_map[:, :, 0], agent_agent[:, 0])
-        predictions = self.predict(agent_map[:, :, 1:], agent_agent[:, 1:], neighbors[:, :, -1])
-        scores = self.score(map_feature, agent_agent, agent_map)
+        if self.structure == 'CrossTransformer':
+            # action to agent
+            action_agent = self.action_agent(agent_agent, ego_future_action, actor_mask)
+            # plan + prediction
+            plans, cost_function_weights = self.plan(agent_map[:, :, 0], agent_agent[:, 0])
+            predictions = self.predict(agent_map[:, :, 1:], agent_agent[:, 1:], neighbors[:, :, -1], action_agent)
+            scores = self.score(map_feature, agent_agent, agent_map)
+
+        elif self.structure == 'SelfAttention':
+            # action self attention
+            action_action = self.action_action(ego_future_action)
+            # plan + prediction
+            plans, cost_function_weights = self.plan(agent_map[:, :, 0], action_action[:, 0])
+            predictions = self.predict(agent_map[:, :, 1:], agent_agent[:, 1:], neighbors[:, :, -1], action_action)
+            scores = self.score(map_feature, agent_agent, agent_map)
+
+        elif self.structure == 'DIPP':
+            # plan + prediction 
+            plans, cost_function_weights = self.plan(agent_map[:, :, 0], agent_agent[:, 0])
+            predictions = self.predict(agent_map[:, :, 1:], agent_agent[:, 1:], neighbors[:, :, -1])
+            scores = self.score(map_feature, agent_agent, agent_map)
         
         return plans, predictions, scores, cost_function_weights
 
