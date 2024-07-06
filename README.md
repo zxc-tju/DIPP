@@ -16,13 +16,20 @@ sudo apt-get install libsuitesparse-dev
 ```
 
 ### Create conda env
+zxc: delete - scikit-sparse==0.4.6 in the yml file before run conda create!
 ```bash
 conda env create -f environment.yml
 conda activate DIPP
 ```
 
 ### Install Theseus
+
+zxc: Install cuda 11.3 in advance!
+
 Install the [Theseus library](https://github.com/facebookresearch/theseus), follow the guidelines.
+
+zxc: Install scikit-sparse==0.4.11 after that
+zxc: pip install functorch (not sure if it is needed)
 
 ## Usage
 ### Data Processing
