@@ -6,12 +6,45 @@ import argparse
 import logging
 import os
 import numpy as np
+from datetime import datetime
 from torch import nn, optim
 from utils.train_utils import *
 from model.planner import MotionPlanner
 from model.predictor import Predictor
 from torch.utils.data import DataLoader
 
+
+class Inter_DrivingData(Dataset):
+    def __init__(self, file_list):
+
+        self.data_list = file_list
+
+    def __len__(self):
+        return len(self.data_list)
+
+    def __getitem__(self, idx):
+        retries = 3  # 定义重试次数
+        for attempt in range(retries):
+            try:
+                data = np.load(self.data_list[idx], allow_pickle=True)
+                ego = data['ego']
+                neighbors = data['neighbors']
+                ref_line = data['ref_line']
+                map_lanes = data['map_lanes']
+                map_crosswalks = data['map_crosswalks']
+                gt_future_states = data['gt_future_states']
+                # ego_gt_control = data['ego_gt_control']
+                # ego_control_acceleration = data['ego_control_acceleration']
+                # ego_control_yaw_rate = data['ego_control_yaw_rate']
+                # ego_gt_control = np.column_stack((ego_control_acceleration, ego_control_yaw_rate))
+                # return ego, neighbors, map_lanes, map_crosswalks, ref_line, gt_future_states, ego_gt_control
+                return ego, neighbors, map_lanes, map_crosswalks, ref_line, gt_future_states
+            
+            except Exception as e:
+                print(f"Attempt {attempt+1} - Error loading {self.data_list[idx]}: {e}")
+                if attempt == retries - 1:
+                    return None
+                
 def train_epoch(data_loader, predictor, planner, optimizer, use_planning):
     epoch_loss = []
     epoch_metrics = []
@@ -55,7 +88,7 @@ def train_epoch(data_loader, predictor, planner, optimizer, use_planning):
             plan = final_values["control_variables"].view(-1, 50, 2)
             plan = bicycle_model(plan, ego[:, -1])[:, :, :3]
 
-            plan_cost = planner.objective.error_squared_norm().mean() / planner.objective.dim()
+            plan_cost = planner.objective.error_metric().mean() / planner.objective.dim()
             plan_loss = F.smooth_l1_loss(plan, ground_truth[:, 0, :, :3]) 
             plan_loss += F.smooth_l1_loss(plan[:, -1], ground_truth[:, 0, -1, :3])
             loss += plan_loss + 1e-3 * plan_cost # planning loss
@@ -158,6 +191,8 @@ def valid_epoch(data_loader, predictor, planner, use_planning):
 
 def model_training():
     # Logging
+    current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    args.name = args.name + f"_{current_datetime}"
     log_path = f"./training_log/{args.name}/"
     os.makedirs(log_path, exist_ok=True)
     initLogging(log_file=log_path+'train.log')
@@ -189,13 +224,58 @@ def model_training():
     train_epochs = args.train_epochs
     batch_size = args.batch_size
     
-    # set up data loaders
-    train_set = DrivingData(args.train_set+'/*')
-    valid_set = DrivingData(args.valid_set+'/*')
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=args.num_workers)
-    valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=False, num_workers=args.num_workers)
-    logging.info("Dataset Prepared: {} train data, {} validation data\n".format(len(train_set), len(valid_set)))
+    # # set up data loaders
+    # train_set = DrivingData(args.train_set+'/*')
+    # valid_set = DrivingData(args.valid_set+'/*')
+    # train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=args.num_workers)
+    # valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=False, num_workers=args.num_workers)
+    # logging.info("Dataset Prepared: {} train data, {} validation data\n".format(len(train_set), len(valid_set)))
     
+    set_dir = args.train_set
+    files_pattern = os.path.join(set_dir, '*')
+    all_files = glob.glob(files_pattern)
+    # random.shuffle(all_files)
+    selected_index = int(len(all_files))
+
+    selected_all_files = all_files[:selected_index]
+    split_index_train = int(0.8 * len(selected_all_files))
+    split_index_val = int(0.9 * len(selected_all_files))
+    train_files_list = selected_all_files[:split_index_train]
+    val_files_list = selected_all_files[split_index_train:split_index_val]
+    test_files_list = selected_all_files[split_index_val:]
+    save_path = f'./training_log/training_data_log/{args.name}/'
+    os.makedirs(save_path, exist_ok=True)  # Create the directory if it doesn't exist
+    
+    file_save_path_all = os.path.join(save_path, 'selected_files_all.txt')
+    file_save_path_train = os.path.join(save_path, 'selected_files_train.txt')
+    file_save_path_val = os.path.join(save_path, 'selected_files_val.txt')
+    file_save_path_test = os.path.join(save_path, 'selected_files_test.txt')
+    # Save the selected_all_files list to a file
+    with open(file_save_path_all, 'w') as file:
+        for filepath in selected_all_files:
+            file.write(filepath + '\n')
+
+    with open(file_save_path_train, 'w') as file:
+        for filepath in train_files_list:
+            file.write(filepath + '\n')
+            
+    with open(file_save_path_val, 'w') as file:
+        for filepath in val_files_list:
+            file.write(filepath + '\n')       
+
+    with open(file_save_path_test, 'w') as file:
+        for filepath in test_files_list:
+            file.write(filepath + '\n') 
+
+    train_set = Inter_DrivingData(train_files_list)
+    valid_set = Inter_DrivingData(val_files_list)
+    train_loader = DataLoader(train_set, batch_size=batch_size, 
+                              shuffle=True, num_workers=args.num_workers, drop_last=True)
+    # 用python自带的dataloader继承 train_set
+    valid_loader = DataLoader(valid_set, batch_size=32, 
+                              shuffle=False, num_workers=args.num_workers, drop_last=True)
+    logging.info("Dataset Prepared: {} train data, {} validation data\n".format(len(train_set), len(valid_set)))
+
     # begin training
     for epoch in range(train_epochs):
         logging.info(f"Epoch {epoch+1}/{train_epochs}")
