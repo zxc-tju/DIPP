@@ -164,7 +164,7 @@ def valid_epoch(data_loader, predictor, planner, use_planning):
             plan = final_values["control_variables"].view(-1, 50, 2)
             plan = bicycle_model(plan, ego[:, -1])[:, :, :3]
 
-            plan_cost = planner.objective.error_squared_norm().mean() / planner.objective.dim()
+            plan_cost = planner.objective.error_metric().mean() / planner.objective.dim()
             plan_loss = F.smooth_l1_loss(plan, ground_truth[:, 0, :, :3])
             plan_loss += F.smooth_l1_loss(plan[:, -1], ground_truth[:, 0, -1, :3])
             loss += plan_loss + 1e-3 * plan_cost # planning loss
