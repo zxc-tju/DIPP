@@ -196,7 +196,7 @@ def valid_epoch(data_loader, predictor, planner, use_planning):
 def model_training():
     # Logging
     current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    args.name = args.name + f"_{current_datetime}"
+    args.name = args.future_model + args.name + f"_{current_datetime}"
     log_path = f"./training_log/{args.name}/"
     os.makedirs(log_path, exist_ok=True)
     initLogging(log_file=log_path+'train.log')
@@ -303,12 +303,12 @@ def model_training():
                'val-predictorADE': val_metrics[2], 'val-predictorFDE': val_metrics[3]}
 
         if epoch == 0:
-            with open(f'./training_log/{args.name}/train_log.csv', 'w') as csv_file: 
+            with open(f'./training_log/{args.name}/train_log_{args.name}.csv', 'w') as csv_file: 
                 writer = csv.writer(csv_file) 
                 writer.writerow(log.keys())
                 writer.writerow(log.values())
         else:
-            with open(f'./training_log/{args.name}/train_log.csv', 'a') as csv_file: 
+            with open(f'./training_log/{args.name}/train_log_{args.name}.csv', 'a') as csv_file: 
                 writer = csv.writer(csv_file)
                 writer.writerow(log.values())
 
@@ -332,7 +332,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, help='batch size (default: 32)', default=32)
     parser.add_argument('--learning_rate', type=float, help='learning rate (default: 2e-4)', default=2e-4)
     parser.add_argument('--use_planning', action="store_true", help='if use integrated planning module (default: False)', default=False)
-    parser.add_argument('--future_model', type=str, help='DIPP or SelfAttention or CrossTransformer', default='DIPP')
+    parser.add_argument('--future_model', type=str, help='DIPP or SelfAttention or CrossTransformer', default='SelfAttention')
     parser.add_argument('--device', type=str, help='run on which device (default: cuda)', default='cuda')
     args = parser.parse_args()
 
