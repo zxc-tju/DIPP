@@ -27,9 +27,11 @@ conda activate DIPP
 zxc: Install cuda 11.3 in advance!
 
 Install the [Theseus library](https://github.com/facebookresearch/theseus), follow the guidelines.
+zxc: pip install theseus-ai
 
-zxc: Install scikit-sparse==0.4.11 after that
-zxc: pip install functorch (not sure if it is needed)
+zxc: pip install functorch
+zxc: uninstall scikit-sparse
+zxc: pip install scikit-sparse==0.4.11
 
 ## Usage
 ### Data Processing
