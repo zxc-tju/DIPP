@@ -64,6 +64,55 @@ python train.py \
 python train.py --name _5_pre_train_10_percent_step_1 --train_set /mnt/workspace/data/processed_normalized_10percent --valid_set /mnt/workspace/data/processed_normalized_10percent --use_planning --pretrain_epochs 5 --train_epochs 40 --batch_size 128 --learning_rate 2e-4 --future_model CrossTransformer --device cuda:0
 ```
 
+cudnn-related issues:
+download cudnn-local-repo-ubuntu2004-8.5.0.96_1.0-1_amd64.deb from https://developer.nvidia.com/cudnn-downloads
+
+Step 1: Install the .deb Package
+Navigate to the directory where the .deb file is located:
+
+Install the .deb package:
+Use dpkg to install the package:
+
+```bash
+sudo dpkg -i cudnn-local-repo-ubuntu2004-8.5.0.96_1.0-1_amd64.deb
+```
+
+Add the NVIDIA package repository key:
+```bash
+sudo cp /var/cudnn-local-repo-*/cuda-*.key /usr/share/keyrings/
+```
+
+Update the package list:
+
+```bash
+sudo apt-get update
+```
+
+Install cuDNN libraries:
+```bash
+sudo apt-get install libcudnn8 libcudnn8-dev libcudnn8-samples
+```
+
+Step 2: Verify Installation
+Check the installed cuDNN version:
+```bash
+dpkg -l | grep cudnn
+```
+
+You should see something like:
+
+```bash
+ii  libcudnn8            8.5.0.96-1+cuda11.8   amd64        cuDNN runtime libraries
+ii  libcudnn8-dev        8.5.0.96-1+cuda11.8   amd64        cuDNN development libraries and headers
+ii  libcudnn8-samples    8.5.0.96-1+cuda11.8   amd64        cuDNN samples
+```
+
+Step 3: Update LD_LIBRARY_PATH
+Update LD_LIBRARY_PATH:
+Ensure your LD_LIBRARY_PATH includes the path to the cuDNN libraries:
+```bash
+export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+```
 
 ### Open-loop testing
 Run ```open_loop_test.py``` to test the trained planner in an open-loop manner. You need to specify the path to the original test dataset ```--test_set``` (path to the folder) and also the file path to the trained model ```--model_path```. Set ```--render``` to visualize the results and set ```--save``` to save the rendered images.
