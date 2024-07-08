@@ -12,6 +12,7 @@ Download the [Waymo Open Motion Dataset](https://waymo.com/open/download/) v1.1;
 ## Installation
 ### Install dependency
 ```bash
+sudo apt update
 sudo apt-get install libsuitesparse-dev
 ```
 
@@ -27,11 +28,11 @@ conda activate DIPP
 zxc: Install cuda 11.3 in advance!
 
 Install the [Theseus library](https://github.com/facebookresearch/theseus), follow the guidelines.
-zxc: pip install theseus-ai
+
 
 zxc: pip install functorch
-zxc: uninstall scikit-sparse
 zxc: pip install scikit-sparse==0.4.11
+zxc: pip install theseus-ai
 
 ## Usage
 ### Data Processing
@@ -61,7 +62,9 @@ python train.py \
 
 # for server
 ```shell 
-python train.py --name _5_pre_train_10_percent_step_1 --train_set /mnt/workspace/data/processed_normalized_10percent --valid_set /mnt/workspace/data/processed_normalized_10percent --use_planning --pretrain_epochs 5 --train_epochs 40 --batch_size 128 --learning_rate 2e-4 --future_model CrossTransformer --device cuda:0
+python train.py --name _5_pre_train_10_percent_step_1 --train_set /mnt/workspace/data/processed_normalized_10percent --valid_set /mnt/workspace/data/processed_normalized_10percent --use_planning --pretrain_epochs 5 --train_epochs 40 --batch_size 32 --learning_rate 2e-4 --future_model CrossTransformer --device cuda:0
+
+python train.py --name _5_pre_train_10_percent_step_1 --train_set /mnt/workspace/data/processed_normalized_10percent --valid_set /mnt/workspace/data/processed_normalized_10percent --use_planning --pretrain_epochs 5 --train_epochs 40 --batch_size 32 --learning_rate 2e-4 --future_model DIPP --device cuda:0
 ```
 
 cudnn-related issues:
