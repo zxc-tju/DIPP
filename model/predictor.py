@@ -210,12 +210,16 @@ class AVDecoder(nn.Module):
         self.register_buffer('constraint', torch.tensor([[10, 10]]))
 
     def forward(self, agent_map, agent_agent, action_agent=None):
-        if self.model_type in {'CrossTransformer', 'DIPP'}:
-            feature = torch.cat([agent_map, action_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
+        if self.model_type in {'CrossTransformer'}:
+            feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
+            # feature = torch.cat([agent_map, action_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
             # feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1), action_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
         elif self.model_type in {'SelfAttention'}:
             # feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
             feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1), action_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
+        elif self.model_type in {'DIPP'}:
+            feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
+
         actions = self.control(feature).view(-1, 3, self._future_steps, 2)
         dummy = torch.ones(1, 1).to(self.cost[0].weight.device)
         cost_function_weights = torch.cat([self.cost(dummy)[:, :7] * self.scale, self.constraint], dim=-1)
@@ -314,7 +318,7 @@ class Predictor(nn.Module):
             predictions = self.predict(agent_map[:, :, 1:], agent_agent[:, 1:], neighbors[:, :, -1], action_agent)
             scores = self.score(map_feature, agent_agent, agent_map)
 
-        elif self.structure == 'SelfAttention':
+        elif self.structure == 'SelfAttention':  # archived
             # action self attention
             action_action = self.action_action(ego_future_action)
             # plan + prediction
