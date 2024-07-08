@@ -314,7 +314,7 @@ class Predictor(nn.Module):
             # action to agent
             action_agent = self.action_agent(agent_agent, ego_future_action, actor_mask)
             # plan + prediction
-            plans, cost_function_weights = self.plan(agent_map[:, :, 0], agent_agent[:, 0], action_agent[:, 0])
+            plans, cost_function_weights = self.plan(agent_map[:, :, 0], agent_agent[:, 0])
             predictions = self.predict(agent_map[:, :, 1:], agent_agent[:, 1:], neighbors[:, :, -1], action_agent)
             scores = self.score(map_feature, agent_agent, agent_map)
 

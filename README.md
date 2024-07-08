@@ -47,7 +47,7 @@ python data_process.py \
 Run ```train.py``` to learn the predictor and planner (if set ```--use_planning```). You need to specify the file paths to training data ```--train_set``` and validation data ```--valid_set```. Leave other arguments vacant to use the default setting.
 ```shell
 python train.py \
---name _10_percent_step_1 \
+--name _5_pre_train_10_percent_step_1 \
 --train_set /home/zxc/Documents/data/Waymo_sample/processed_normalized_10percent \
 --valid_set /home/zxc/Documents/data/Waymo_sample/processed_normalized_10percent \
 --use_planning \
@@ -58,6 +58,12 @@ python train.py \
 --future_model SelfAttention \
 --device cuda:0
 ```
+
+# for server
+```shell 
+python train.py --name _5_pre_train_10_percent_step_1 --train_set /mnt/workspace/data/processed_normalized_10percent --valid_set /mnt/workspace/data/processed_normalized_10percent --use_planning --pretrain_epochs 5 --train_epochs 40 --batch_size 128 --learning_rate 2e-4 --future_model CrossTransformer --device cuda:0
+```
+
 
 ### Open-loop testing
 Run ```open_loop_test.py``` to test the trained planner in an open-loop manner. You need to specify the path to the original test dataset ```--test_set``` (path to the folder) and also the file path to the trained model ```--model_path```. Set ```--render``` to visualize the results and set ```--save``` to save the rendered images.
