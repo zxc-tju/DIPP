@@ -196,16 +196,26 @@ class AgentDecoder(nn.Module):
         return trajs
 
 class AVDecoder(nn.Module):
-    def __init__(self, future_steps=50, feature_len=9):
+    def __init__(self, future_steps=50, feature_len=9, model_type='DIPP'):
         super(AVDecoder, self).__init__()
         self._future_steps = future_steps
-        self.control = nn.Sequential(nn.Dropout(0.1), nn.Linear(512, 256), nn.ELU(), nn.Linear(256, future_steps*2))
+        self.model_type = model_type
+        if model_type in {'DIPP', 'CrossTransformer'}:
+            emb_dim = 512  # 768 if 3 features
+        elif model_type in {'SelfAttention'}:
+            emb_dim = 768
+        self.control = nn.Sequential(nn.Dropout(0.1), nn.Linear(emb_dim, 256), nn.ELU(), nn.Linear(256, future_steps*2))
         self.cost = nn.Sequential(nn.Linear(1, 128), nn.ReLU(), nn.Linear(128, feature_len), nn.Softmax(dim=-1))
         self.register_buffer('scale', torch.tensor([1, 1, 1, 1, 1, 10, 100]))
         self.register_buffer('constraint', torch.tensor([[10, 10]]))
 
-    def forward(self, agent_map, agent_agent):
-        feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
+    def forward(self, agent_map, agent_agent, action_agent=None):
+        if self.model_type in {'CrossTransformer', 'DIPP'}:
+            feature = torch.cat([agent_map, action_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
+            # feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1), action_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
+        elif self.model_type in {'SelfAttention'}:
+            # feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
+            feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1), action_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
         actions = self.control(feature).view(-1, 3, self._future_steps, 2)
         dummy = torch.ones(1, 1).to(self.cost[0].weight.device)
         cost_function_weights = torch.cat([self.cost(dummy)[:, :7] * self.scale, self.constraint], dim=-1)
@@ -254,7 +264,7 @@ class Predictor(nn.Module):
         self.agent_agent = Agent2Agent()
 
         # decode layers
-        self.plan = AVDecoder(self._future_steps)
+        self.plan = AVDecoder(self._future_steps, model_type=future_model)
         self.predict = AgentDecoder(self._future_steps, model_type=future_model)
         self.score = Score()
 
@@ -300,7 +310,7 @@ class Predictor(nn.Module):
             # action to agent
             action_agent = self.action_agent(agent_agent, ego_future_action, actor_mask)
             # plan + prediction
-            plans, cost_function_weights = self.plan(agent_map[:, :, 0], agent_agent[:, 0])
+            plans, cost_function_weights = self.plan(agent_map[:, :, 0], agent_agent[:, 0], action_agent[:, 0])
             predictions = self.predict(agent_map[:, :, 1:], agent_agent[:, 1:], neighbors[:, :, -1], action_agent)
             scores = self.score(map_feature, agent_agent, agent_map)
 
@@ -308,7 +318,7 @@ class Predictor(nn.Module):
             # action self attention
             action_action = self.action_action(ego_future_action)
             # plan + prediction
-            plans, cost_function_weights = self.plan(agent_map[:, :, 0], agent_agent[:, 0])
+            plans, cost_function_weights = self.plan(agent_map[:, :, 0], agent_agent[:, 0], action_action[:, 0])
             predictions = self.predict(agent_map[:, :, 1:], agent_agent[:, 1:], neighbors[:, :, -1], action_action)
             scores = self.score(map_feature, agent_agent, agent_map)
 
