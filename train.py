@@ -204,6 +204,7 @@ def model_training():
     logging.info("------------- {} -------------".format(args.name))
     logging.info("Batch size: {}".format(args.batch_size))
     logging.info("Learning rate: {}".format(args.learning_rate))
+    logging.info("Pretrain epochs: {}".format(args.pretrain_epochs))
     logging.info("Use ego info. handling model: {}".format(args.future_model))
     logging.info("Use integrated planning module: {}".format(args.use_planning))
     logging.info("Use device: {}".format(args.device))
