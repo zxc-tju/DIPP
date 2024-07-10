@@ -342,7 +342,7 @@ class Predictor(nn.Module):
 
         elif self.structure == 'CrossTransformer_v2':
              
-            action_mask = torch.full((32, 1), True, dtype=torch.bool).to(actor_mask.device)  # action should always be considered
+            action_mask = torch.full((actor_mask.shape[0], 1), True, dtype=torch.bool).to(actor_mask.device)  # action should always be considered
             actor_action_mask = torch.cat([actor_mask, action_mask], dim=1)
             # action to agent
             action_agent = self.action_agent(agent_agent, ego_future_action, actor_action_mask)
