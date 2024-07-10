@@ -48,15 +48,15 @@ python data_process.py \
 Run ```train.py``` to learn the predictor and planner (if set ```--use_planning```). You need to specify the file paths to training data ```--train_set``` and validation data ```--valid_set```. Leave other arguments vacant to use the default setting.
 ```shell
 python train.py \
---name _5_pre_train_10_percent_step_1 \
+--name _10_percent_step_1 \
 --train_set /home/zxc/Documents/data/Waymo_sample/processed_normalized_10percent \
 --valid_set /home/zxc/Documents/data/Waymo_sample/processed_normalized_10percent \
 --use_planning \
---pretrain_epochs 1 \
+--pretrain_epochs 5 \
 --train_epochs 40 \
 --batch_size 32 \
 --learning_rate 2e-4 \
---future_model SelfAttention \
+--future_model CrossTransformer_v2 \
 --device cuda:0
 ```
 
