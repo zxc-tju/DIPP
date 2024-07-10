@@ -322,9 +322,9 @@ def model_training():
 if __name__ == "__main__":
     # Arguments
     parser = argparse.ArgumentParser(description='Training')
-    parser.add_argument('--name', type=str, help='log name (default: "Exp1")', default="Exp1")
-    parser.add_argument('--train_set', type=str, help='path to train datasets', default='/home/zxc/Documents/Waymo/processed_normalized_10percent')
-    parser.add_argument('--valid_set', type=str, help='path to validation datasets', default='/home/zxc/Documents/Waymo/processed_normalized_10percent')
+    parser.add_argument('--name', type=str, help='log name (default: "Dubug")', default="Dubug")
+    parser.add_argument('--train_set', type=str, help='path to train datasets', default='/home/zxc/Documents/data/Waymo_sample/processed_normalized_10percent')
+    parser.add_argument('--valid_set', type=str, help='path to validation datasets', default='/home/zxc/Documents/data/Waymo_sample/processed_normalized_10percent')
     parser.add_argument('--seed', type=int, help='fix random seed', default=42)
     parser.add_argument("--num_workers", type=int, default=8, help="number of workers used for dataloader")
     parser.add_argument('--pretrain_epochs', type=int, help='epochs of pretraining predictor', default=5)
@@ -332,7 +332,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, help='batch size (default: 32)', default=32)
     parser.add_argument('--learning_rate', type=float, help='learning rate (default: 2e-4)', default=2e-4)
     parser.add_argument('--use_planning', action="store_true", help='if use integrated planning module (default: False)', default=False)
-    parser.add_argument('--future_model', type=str, help='DIPP or SelfAttention or CrossTransformer', default='SelfAttention')
+    parser.add_argument('--future_model', type=str, help='DIPP or SelfAttention or CrossTransformer(_v2)', default='CrossTransformer_v2')
     parser.add_argument('--device', type=str, help='run on which device (default: cuda)', default='cuda')
     args = parser.parse_args()
 

@@ -154,6 +154,20 @@ class FutureTrajectoryTransformer(nn.Module):
         output = self.actor_interaction_to_ego_action(query, agent_interaction, agent_interaction, mask)
 
         return output 
+ 
+class FutureTrajectoryTransformer_v2(nn.Module):
+    def __init__(self):
+        super(FutureTrajectoryTransformer_v2, self).__init__()
+        self.actor_interaction_to_ego_action = CrossTransformer()
+
+    def forward(self, agent_interaction, ego_action, mask=None):
+        query = agent_interaction
+        # cat ego_action and agent_interaction to form K V 
+        k_v = torch.cat([ego_action, agent_interaction], dim=1)
+        output = self.actor_interaction_to_ego_action(query, k_v, k_v, mask)
+
+        return output 
+
     
 # Decoders
 class AgentDecoder(nn.Module):
@@ -161,7 +175,7 @@ class AgentDecoder(nn.Module):
         super(AgentDecoder, self).__init__()
         self._future_steps = future_steps 
         self.model_type = model_type
-        if model_type in {'CrossTransformer', 'SelfAttention'}:
+        if model_type in {'CrossTransformer', 'SelfAttention', 'CrossTransformer_v2'}:
             emb_dim = 768
         elif model_type in {'DIPP'}:
             emb_dim = 512
@@ -184,6 +198,8 @@ class AgentDecoder(nn.Module):
     def forward(self, agent_map, agent_agent, current_state, action_ego_related=None):
         if self.model_type in {'CrossTransformer'}:
             feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1, 1), action_ego_related.unsqueeze(1).repeat(1, 3, 10, 1)], dim=-1)
+        if self.model_type in {'CrossTransformer_v2'}:
+            feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1, 1), action_ego_related.unsqueeze(1).repeat(1, 3, 1, 1)], dim=-1)
         elif self.model_type in {'SelfAttention'}:
             feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1, 1), action_ego_related.unsqueeze(1).repeat(1, 3, 10, 1)], dim=-1)
         elif self.model_type in {'DIPP'}:
@@ -200,7 +216,7 @@ class AVDecoder(nn.Module):
         super(AVDecoder, self).__init__()
         self._future_steps = future_steps
         self.model_type = model_type
-        if model_type in {'DIPP', 'CrossTransformer'}:
+        if model_type in {'DIPP', 'CrossTransformer', 'CrossTransformer_v2'}:
             emb_dim = 512  # 768 if 3 features
         elif model_type in {'SelfAttention'}:
             emb_dim = 768
@@ -214,6 +230,9 @@ class AVDecoder(nn.Module):
             feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
             # feature = torch.cat([agent_map, action_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
             # feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1), action_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
+        if self.model_type in {'CrossTransformer_v2'}:
+            feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
+
         elif self.model_type in {'SelfAttention'}:
             # feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
             feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1), action_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
@@ -273,7 +292,10 @@ class Predictor(nn.Module):
         self.score = Score()
 
         # ego-future-related layers
-        self.action_agent = FutureTrajectoryTransformer()
+        if future_model in {'CrossTransformer_v2'}:
+            self.action_agent = FutureTrajectoryTransformer_v2()
+        else:
+            self.action_agent = FutureTrajectoryTransformer()
         self.action_action = Action2Action()
 
     def forward(self, ego, neighbors, map_lanes, map_crosswalks, ego_future):
@@ -316,6 +338,17 @@ class Predictor(nn.Module):
             # plan + prediction
             plans, cost_function_weights = self.plan(agent_map[:, :, 0], agent_agent[:, 0])
             predictions = self.predict(agent_map[:, :, 1:], agent_agent[:, 1:], neighbors[:, :, -1], action_agent)
+            scores = self.score(map_feature, agent_agent, agent_map)
+
+        elif self.structure == 'CrossTransformer_v2':
+             
+            action_mask = torch.full((32, 1), True, dtype=torch.bool).to(actor_mask.device)  # action should always be considered
+            actor_action_mask = torch.cat([actor_mask, action_mask], dim=1)
+            # action to agent
+            action_agent = self.action_agent(agent_agent, ego_future_action, actor_action_mask)
+            # plan + prediction
+            plans, cost_function_weights = self.plan(agent_map[:, :, 0], agent_agent[:, 0])
+            predictions = self.predict(agent_map[:, :, 1:], agent_agent[:, 1:], neighbors[:, :, -1], action_agent[:, 1:])
             scores = self.score(map_feature, agent_agent, agent_map)
 
         elif self.structure == 'SelfAttention':  # archived
