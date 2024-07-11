@@ -203,6 +203,7 @@ def model_training():
 
     logging.info("------------- {} -------------".format(args.name))
     logging.info("Batch size: {}".format(args.batch_size))
+    logging.info("Seed: {}".format(args.seed))
     logging.info("Learning rate: {}".format(args.learning_rate))
     logging.info("Pretrain epochs: {}".format(args.pretrain_epochs))
     logging.info("Use ego info. handling model: {}".format(args.future_model))
@@ -326,7 +327,7 @@ if __name__ == "__main__":
     parser.add_argument('--name', type=str, help='log name (default: "Dubug")', default="Dubug")
     parser.add_argument('--train_set', type=str, help='path to train datasets', default='/home/zxc/Documents/data/Waymo_sample/processed_normalized_10percent')
     parser.add_argument('--valid_set', type=str, help='path to validation datasets', default='/home/zxc/Documents/data/Waymo_sample/processed_normalized_10percent')
-    parser.add_argument('--seed', type=int, help='fix random seed', default=42)
+    parser.add_argument('--seed', type=int, help='fix random seed (default=42)', default=42)
     parser.add_argument("--num_workers", type=int, default=8, help="number of workers used for dataloader")
     parser.add_argument('--pretrain_epochs', type=int, help='epochs of pretraining predictor', default=5)
     parser.add_argument('--train_epochs', type=int, help='epochs of training', default=20)

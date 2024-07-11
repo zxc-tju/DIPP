@@ -55,6 +55,7 @@ python train.py \
 --pretrain_epochs 5 \
 --train_epochs 40 \
 --batch_size 32 \
+--seed 24 \
 --learning_rate 2e-4 \
 --future_model CrossTransformer_v2 \
 --device cuda:0
