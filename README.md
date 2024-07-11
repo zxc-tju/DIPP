@@ -17,7 +17,7 @@ sudo apt-get install libsuitesparse-dev
 ```
 
 ### Create conda env
-zxc: delete - scikit-sparse==0.4.6 in the yml file before run conda create!
+**Notes: delete scikit-sparse==0.4.6 from the yml file before run conda create!**
 ```bash
 conda env create -f environment.yml
 conda activate DIPP
@@ -26,48 +26,21 @@ conda activate DIPP
 ### Install Theseus
 
 zxc: Install cuda 11.3 in advance!
-
-Install the [Theseus library](https://github.com/facebookresearch/theseus), follow the guidelines.
-
-
-zxc: pip install functorch
-zxc: pip install scikit-sparse==0.4.11
-zxc: pip install theseus-ai
-
-## Usage
-### Data Processing
-Run ```data_process.py``` to process the raw data for training. This will convert the original data format into a set of ```.npz``` files, each containing the data of a scene with the AV and surrounding agents. You need to specify the file path to the original data ```--load_path``` and the path to save the processed data ```--save_path``` . You can optionally set ```--use_multiprocessing``` to speed up the processing. 
-```shell
-python data_process.py \
---load_path /path/to/original/data \
---save_path /output/path/to/processed/data \
---use_multiprocessing
+~~Install the [Theseus library](https://github.com/facebookresearch/theseus), follow the guidelines.~~
+```bash
+pip install functorch
 ```
-
-### Training
-Run ```train.py``` to learn the predictor and planner (if set ```--use_planning```). You need to specify the file paths to training data ```--train_set``` and validation data ```--valid_set```. Leave other arguments vacant to use the default setting.
-```shell
-python train.py \
---name _10_percent_step_1 \
---train_set /home/zxc/Documents/data/Waymo_sample/processed_normalized_10percent \
---valid_set /home/zxc/Documents/data/Waymo_sample/processed_normalized_10percent \
---use_planning \
---pretrain_epochs 5 \
---train_epochs 40 \
---batch_size 32 \
---seed 24 \
---learning_rate 2e-4 \
---future_model CrossTransformer_v2 \
---device cuda:0
+```bash
+pip install scikit-sparse==0.4.11
 ```
-
-# for server
-```shell 
-python train.py --name _5_pre_train_10_percent_step_1 --train_set /mnt/workspace/data/processed_normalized_10percent --valid_set /mnt/workspace/data/processed_normalized_10percent --use_planning --pretrain_epochs 5 --train_epochs 40 --batch_size 32 --learning_rate 2e-4 --future_model CrossTransformer --device cuda:0
-
-python train.py --name _5_pre_train_10_percent_step_1 --train_set /mnt/workspace/data/processed_normalized_10percent --valid_set /mnt/workspace/data/processed_normalized_10percent --use_planning --pretrain_epochs 5 --train_epochs 40 --batch_size 32 --learning_rate 2e-4 --future_model DIPP --device cuda:0
+```bash
+pip install theseus-ai
 ```
+theseus-ai verison should be 0.2.1 by default.
 
+
+
+### Issues on Server
 cudnn-related issues:
 download cudnn-local-repo-ubuntu2004-8.5.0.96_1.0-1_amd64.deb from https://developer.nvidia.com/cudnn-downloads
 
@@ -116,6 +89,39 @@ Update LD_LIBRARY_PATH:
 Ensure your LD_LIBRARY_PATH includes the path to the cuDNN libraries:
 ```bash
 export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+```
+
+## Usage
+### Data Processing
+Run ```data_process.py``` to process the raw data for training. This will convert the original data format into a set of ```.npz``` files, each containing the data of a scene with the AV and surrounding agents. You need to specify the file path to the original data ```--load_path``` and the path to save the processed data ```--save_path``` . You can optionally set ```--use_multiprocessing``` to speed up the processing. 
+```shell
+python data_process.py \
+--load_path /path/to/original/data \
+--save_path /output/path/to/processed/data \
+--use_multiprocessing
+```
+
+### Training
+Run ```train.py``` to learn the predictor and planner (if set ```--use_planning```). You need to specify the file paths to training data ```--train_set``` and validation data ```--valid_set```. Leave other arguments vacant to use the default setting.
+```shell
+python train.py \
+--name _10_percent_step_1 \
+--train_set /home/zxc/Documents/data/Waymo_sample/processed_normalized_10percent \
+--valid_set /home/zxc/Documents/data/Waymo_sample/processed_normalized_10percent \
+--use_planning \
+--pretrain_epochs 5 \
+--train_epochs 40 \
+--batch_size 32 \
+--seed 24 \
+--learning_rate 2e-4 \
+--future_model CrossTransformer_v2 \
+--device cuda:0
+```
+
+```shell 
+python train.py --name _5_pre_train_10_percent_step_1 --train_set /mnt/workspace/data/processed_normalized_10percent --valid_set /mnt/workspace/data/processed_normalized_10percent --use_planning --pretrain_epochs 5 --train_epochs 40 --batch_size 32 --learning_rate 2e-4 --future_model CrossTransformer --device cuda:0
+
+python train.py --name _5_pre_train_10_percent_step_1 --train_set /mnt/workspace/data/processed_normalized_10percent --valid_set /mnt/workspace/data/processed_normalized_10percent --use_planning --pretrain_epochs 5 --train_epochs 40 --batch_size 32 --learning_rate 2e-4 --future_model DIPP --device cuda:0
 ```
 
 ### Open-loop testing
