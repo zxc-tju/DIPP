@@ -35,10 +35,7 @@ class DrivingData(Dataset):
         map_lanes = data['map_lanes']
         map_crosswalks = data['map_crosswalks']
         gt_future_states = data['gt_future_states']
-        # ego_control_acceleration = data['ego_control_acceleration']
-        # ego_control_yaw_rate = data['ego_control_yaw_rate']
-        #
-        # return ego, neighbors, map_lanes, map_crosswalks, ref_line, gt_future_states, ego_control_acceleration, ego_control_yaw_rate
+
         return ego, neighbors, map_lanes, map_crosswalks, ref_line, gt_future_states
 
 def MFMA_loss(plans, predictions, scores, ground_truth, weights):
@@ -82,23 +79,12 @@ def motion_metrics(plan_trajectory, prediction_trajectories, ground_truth_trajec
     predictorADE = torch.mean(prediction_distance, dim=-1)
     predictorADE = torch.masked_select(predictorADE, weights[:, :, 0, 0])
     predictorADE = torch.mean(predictorADE)
-    # predictorFDE = prediction_distance[:, :, -1]
-    # predictorFDE = torch.masked_select(predictorFDE, weights[:, :, 0, 0])
-    # predictorFDE = torch.mean(predictorFDE)
-    predictorFDE_5s = prediction_distance[:, :, -1]
-    predictorFDE_5s = torch.masked_select(predictorFDE_5s, weights[:, :, 0, 0])
-    predictorFDE_5s = torch.mean(predictorFDE_5s)
+    predictorFDE = prediction_distance[:, :, -1]
+    predictorFDE = torch.masked_select(predictorFDE, weights[:, :, 0, 0])
+    predictorFDE = torch.mean(predictorFDE)
 
-    predictorFDE_3s = prediction_distance[:, :, -21]
-    predictorFDE_3s = torch.masked_select(predictorFDE_3s, weights[:, :, 0, 0])
-    predictorFDE_3s = torch.mean(predictorFDE_3s)
+    return plannerADE.item(), plannerFDE.item(), predictorADE.item(), predictorFDE.item()
 
-    predictorFDE_1s = prediction_distance[:, :, -41]
-    predictorFDE_1s = torch.masked_select(predictorFDE_1s, weights[:, :, 0, 0])
-    predictorFDE_1s = torch.mean(predictorFDE_1s)
-
-    # return plannerADE.item(), plannerFDE.item(), predictorADE.item(), predictorFDE.item()
-    return plannerADE.item(), plannerFDE.item(), predictorADE.item(), predictorFDE_5s.item(), predictorFDE_3s.item(), predictorFDE_1s.item()
 def project_to_frenet_frame(traj, ref_line):
     distance_to_ref = torch.cdist(traj[:, :, :2], ref_line[:, :, :2])
     k = torch.argmin(distance_to_ref, dim=-1).view(-1, traj.shape[1], 1).expand(-1, -1, 3)
