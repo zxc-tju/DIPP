@@ -7,12 +7,14 @@ import logging
 import os
 import numpy as np
 from torch import nn, optim
-from utils.train_utils import *
+from utils.train_utils import MFMA_loss, select_future, motion_metrics
 from model.planner import MotionPlanner
 from model.predictor import Predictor
 from torch.utils.data import DataLoader
 from utils.test_utils import *
 from waymo_open_dataset.protos import scenario_pb2
+from torch.utils.data import Dataset
+from torch.nn import functional as F
 
 
 class Inter_DrivingData(Dataset):
@@ -242,15 +244,14 @@ def read_file_to_list(file_path):
 if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     predictor = Predictor(50,future_model='DIPP').to(device)
-    model_path = '/home/zxc/Downloads/model_40_DIPP.pth'
+    model_path = 'training_log/DIPP_10_percent_step_1_2024-07-12_11-28-05/model_40_0.8287.pth'
     predictor.load_state_dict(torch.load(model_path, map_location=device))
     trajectory_len, feature_len = 50, 9
     planner = MotionPlanner(trajectory_len, feature_len, device)
 
-    test_files_list = read_file_to_list('training_log/training_data_log/CrossTransformer_v2_10_percent_step_1_2024-07-10_10-58-14/selected_files_test.txt')
+    test_files_list = read_file_to_list('training_log/training_data_log/DIPP_10_percent_step_1_2024-07-12_11-28-05/selected_files_val.txt')
     # # Remove this substring
     # remove_substring = '/home/zxc/Documents/data/Waymo_sample/processed_normalized_10percent'
-
     # # Add this substring in front
     # add_substring = '/home/liuyiru/Dataset/Waymo/processed_step_1_10percent'
 
