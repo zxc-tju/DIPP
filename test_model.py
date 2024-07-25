@@ -7,7 +7,7 @@ import logging
 import os
 import numpy as np
 from torch import nn, optim
-from utils.train_utils import MFMA_loss, select_future, motion_metrics
+from utils.train_utils import MFMA_loss, motion_metrics
 from model.planner import MotionPlanner
 from model.predictor import Predictor
 from torch.utils.data import DataLoader
@@ -109,7 +109,7 @@ def test_model(data_loader, predictor, planner, use_planning, device):
         # show progress
         current += batch[0].shape[0]
         sys.stdout.write(
-            f"\rValid Progress: [{current:>6d}/{size:>6d}]  Loss: {np.mean(epoch_loss):>.4f}  {(time.time() - start_time) / current:>.4f}s/sample")
+            f"\rTesting Progress: [{current:>6d}/{size:>6d}]  Loss: {np.mean(epoch_loss):>.4f}  {(time.time() - start_time) / current:>.4f}s/sample")
         sys.stdout.flush()
 
     epoch_metrics = np.array(epoch_metrics)
@@ -120,121 +120,11 @@ def test_model(data_loader, predictor, planner, use_planning, device):
     #     f'\nval-plannerADE: {plannerADE:.4f}, val-plannerFDE: {plannerFDE:.4f}, val-predictorADE: {predictorADE:.4f}, val-predictorFDE: {predictorFDE:.4f}')
     predictorADE, predictorFDE_5, predictorFDE_3, predictorFDE_1 = np.mean(epoch_metrics[:, 2]), np.mean(epoch_metrics[:, 3]), np.mean(epoch_metrics[:, 4]), np.mean(epoch_metrics[:, 5])
     epoch_metrics = [plannerADE, plannerFDE, predictorADE, predictorFDE_5, predictorFDE_3, predictorFDE_1 ]
-    logging.info(
-        f'\nval-plannerADE: {plannerADE:.4f}, val-plannerFDE: {plannerFDE:.4f}, val-predictorADE: {predictorADE:.4f}, val-predictorFDE_5: {predictorFDE_5:.4f}, val-predictorFDE_3: {predictorFDE_3:.4f}, val-predictorFDE_1: {predictorFDE_1:.4f}')
+    print('\nModel Type: ', predictor.structure)
+    print(
+        f'test-plannerADE: {plannerADE:.4f}, test-plannerFDE: {plannerFDE:.4f} \ntest-predictorADE: {predictorADE:.4f} \ntest-predictorFDE_5: {predictorFDE_5:.4f}, test-predictorFDE_3: {predictorFDE_3:.4f}, test-predictorFDE_1: {predictorFDE_1:.4f}')
 
     return np.mean(epoch_loss), epoch_metrics
-def open_loop_test(device):
-
-    files = glob.glob('/home/liuyiru/git_code/DIPP_v1.0/DIPP/data/training_20s' + '/*')
-    processor = TestDataProcess()
-
-    # cache results
-    collisions = []
-    red_light, off_route = [], []
-    Accs, Jerks, Lat_Accs = [], [], []
-    Human_Accs, Human_Jerks, Human_Lat_Accs = [], [], []
-    similarity_1s, similarity_3s, similarity_5s = [], [], []
-    prediction_ADE, prediction_FDE_1, prediction_FDE_3, prediction_FDE_5 = [], [], [], []
-
-    # load model
-    predictor = Predictor(50).to(device)
-    predictor.load_state_dict(torch.load('/home/liuyiru/git_code/DIPP_v0.0/DIPP/training_log/DIPP/model_30_1.6092.pth', map_location=device))
-    predictor.eval()
-
-    trajectory_len, feature_len = 50, 9
-    planner = MotionPlanner(trajectory_len, feature_len, device=device, test=True)
-
-    # iterate test files
-    for file in files:
-        scenarios = tf.data.TFRecordDataset(file)
-
-        # iterate scenarios in the test file
-        for scenario in scenarios:
-            parsed_data = scenario_pb2.Scenario()
-            parsed_data.ParseFromString(scenario.numpy())
-
-            scenario_id = parsed_data.scenario_id
-            if scenario_id == 'cf610deef4e786e6':
-
-                sdc_id = parsed_data.sdc_track_index
-                timesteps = parsed_data.timestamps_seconds
-
-                # build map
-                processor.build_map(parsed_data.map_features, parsed_data.dynamic_map_states)
-
-                # get a testing scenario
-                for timestep in range(20, len(timesteps)-50, 10):
-                    # prepare data
-                    input_data = processor.process_frame(timestep, sdc_id, parsed_data.tracks)
-
-                    ego = torch.from_numpy(input_data[0]).to(device)
-                    neighbors = torch.from_numpy(input_data[1]).to(device)
-                    lanes = torch.from_numpy(input_data[2]).to(device)
-                    crosswalks = torch.from_numpy(input_data[3]).to(device)
-                    ref_line = torch.from_numpy(input_data[4]).to(device)
-                    neighbor_ids, norm_gt_data, gt_data = input_data[5], input_data[6], input_data[7]
-                    current_state = torch.cat([ego.unsqueeze(1), neighbors[..., :-1]], dim=1)[:, :, -1]
-
-                    # predict
-                    with torch.no_grad():
-                        plans, predictions, scores, cost_function_weights = predictor(ego, neighbors, lanes, crosswalks)
-                        plan, prediction = select_future(plans, predictions, scores)
-
-                    # plan
-                    if True:
-                        planner_inputs = {
-                            "control_variables": plan.view(-1, 100),
-                            "predictions": prediction,
-                            "ref_line_info": ref_line,
-                            "current_state": current_state
-                        }
-
-                        for i in range(feature_len):
-                            planner_inputs[f'cost_function_weight_{i+1}'] = cost_function_weights[:, i].unsqueeze(0)
-
-                        with torch.no_grad():
-                            final_values, info = planner.layer.forward(planner_inputs, optimizer_kwargs={'track_best_solution': True})
-                            plan = info.best_solution['control_variables'].view(-1, 50, 2).to(device)
-
-                    plan = bicycle_model(plan, ego[:, -1])[:, :, :3]
-                    plan = plan.cpu().numpy()[0]
-
-                    # compute metrics
-
-                    # collision = check_collision(plan, norm_gt_data[1:], current_state.cpu().numpy()[0, :, 5:])
-                    collision = False
-                    collisions.append(collision)
-                    traffic = check_traffic(plan, ref_line.cpu().numpy()[0])
-                    red_light.append(traffic[0])
-                    off_route.append(traffic[1])
-                    # logging.info(f"Collision: {collision}, Red light: {traffic[0]}, Off route: {traffic[1]}")
-
-                    # Acc, Jerk, Lat_Acc = check_dynamics(plan)
-                    Acc, Jerk, Lat_Acc = 0,0,0
-                    Accs.append(Acc)
-                    Jerks.append(Jerk)
-                    Lat_Accs.append(Lat_Acc)
-                    # logging.info(f"Acceleration: {Acc}, Jerk: {Jerk}, Lateral_Acceleration: {Lat_Acc}")
-
-                    # Acc, Jerk, Lat_Acc = check_dynamics(norm_gt_data[0])
-                    Human_Accs.append(Acc)
-                    Human_Jerks.append(Jerk)
-                    Human_Lat_Accs.append(Lat_Acc)
-                    logging.info(f"Human: Acceleration: {Acc}, Jerk: {Jerk}, Lateral_Acceleration: {Lat_Acc}")
-
-                    # similarity = check_similarity(plan, norm_gt_data[0])
-                    # similarity_1s.append(similarity[9])
-                    # similarity_3s.append(similarity[29])
-                    # similarity_5s.append(similarity[49])
-                    # logging.info(f"Similarity@1s: {similarity[9]}, Similarity@3s: {similarity[29]}, Similarity@5s: {similarity[49]}")
-
-                    prediction_error = check_prediction(prediction[0].cpu().numpy(), norm_gt_data[:,1:])
-                    prediction_ADE.append(prediction_error[0])
-                    prediction_FDE_1.append(prediction_error[1])
-                    prediction_FDE_3.append(prediction_error[2])
-                    prediction_FDE_5.append(prediction_error[3])
-                    logging.info(f"Prediction ADE: {prediction_error[0]}, FDE: {prediction_error[1]}")
 
 
 def read_file_to_list(file_path):
@@ -263,5 +153,5 @@ if __name__ == "__main__":
     test_loader = DataLoader(test_set, batch_size=32, shuffle=False, num_workers=1)
     # 评估模型
     mean_loss, metrics = test_model(test_loader, predictor, planner, use_planning=True, device=device)
-    print(f'Mean Loss: {mean_loss}')
-    print(f'Metrics: {metrics}')
+    # print(f'Mean Loss: {mean_loss}')
+    # print(f'Metrics: {metrics}')

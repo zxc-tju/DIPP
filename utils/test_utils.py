@@ -351,3 +351,10 @@ def check_prediction(trajs, gt):
             FDE.append(error[-1])
 
     return np.mean(ADE), np.mean(FDE)
+
+def select_future(plans, predictions, scores):
+    best_mode = torch.argmax(scores, dim=-1)
+    plan = torch.stack([plans[i, m] for i, m in enumerate(best_mode)])
+    prediction = torch.stack([predictions[i, m] for i, m in enumerate(best_mode)])
+
+    return plan, prediction
