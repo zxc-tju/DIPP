@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
+from torch.distributions import Normal
 
 # Agent history encoder
 class AgentEncoder(nn.Module):
@@ -175,7 +176,7 @@ class AgentDecoder(nn.Module):
         super(AgentDecoder, self).__init__()
         self._future_steps = future_steps 
         self.model_type = model_type
-        if model_type in {'CrossTransformer', 'SelfAttention', 'CrossTransformer_v2'}:
+        if model_type in {'CrossTransformer', 'SelfAttention', 'CrossTransformer_v2', 'Bayesian_output'}:
             emb_dim = 768
         elif model_type in {'DIPP'}:
             emb_dim = 512
@@ -198,7 +199,7 @@ class AgentDecoder(nn.Module):
     def forward(self, agent_map, agent_agent, current_state, action_ego_related=None):
         if self.model_type in {'CrossTransformer'}:
             feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1, 1), action_ego_related.unsqueeze(1).repeat(1, 3, 10, 1)], dim=-1)
-        if self.model_type in {'CrossTransformer_v2'}:
+        if self.model_type in {'CrossTransformer_v2', 'Bayesian_output'}:
             feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1, 1), action_ego_related.unsqueeze(1).repeat(1, 3, 1, 1)], dim=-1)
         elif self.model_type in {'SelfAttention'}:
             feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1, 1), action_ego_related.unsqueeze(1).repeat(1, 3, 10, 1)], dim=-1)
@@ -210,18 +211,33 @@ class AgentDecoder(nn.Module):
         trajs = torch.reshape(trajs, (-1, 3, 10, self._future_steps, 3))
 
         return trajs
+    
+class BayesianLayer(nn.Module):
 
+  def __init__(self, in_size, out_size) -> None:
+    super().__init__()
+    self.mean = nn.Parameter(torch.randn(in_size, out_size))
+    self.log_sd = nn.Parameter(torch.randn(in_size, out_size))
+
+  def forward(self, x):
+    w = Normal(self.mean, self.log_sd.exp()).rsample()
+    # print('w = ', w)
+    # print(any(w))
+    return torch.matmul(x, w)
+  
 class AVDecoder(nn.Module):
     def __init__(self, future_steps=50, feature_len=9, model_type='DIPP'):
         super(AVDecoder, self).__init__()
         self._future_steps = future_steps
         self.model_type = model_type
-        if model_type in {'DIPP', 'CrossTransformer', 'CrossTransformer_v2'}:
+        if model_type in {'DIPP', 'CrossTransformer', 'CrossTransformer_v2', 'Bayesian_output'}:
             emb_dim = 512  # 768 if 3 features
         elif model_type in {'SelfAttention'}:
             emb_dim = 768
         self.control = nn.Sequential(nn.Dropout(0.1), nn.Linear(emb_dim, 256), nn.ELU(), nn.Linear(256, future_steps*2))
         self.cost = nn.Sequential(nn.Linear(1, 128), nn.ReLU(), nn.Linear(128, feature_len), nn.Softmax(dim=-1))
+        if model_type in {'Bayesian_output'}:
+            self.cost = nn.Sequential(BayesianLayer(1, 128), nn.ReLU(), nn.Linear(128, feature_len), nn.Softmax(dim=-1))
         self.register_buffer('scale', torch.tensor([1, 1, 1, 1, 1, 10, 100]))
         self.register_buffer('constraint', torch.tensor([[10, 10]]))
 
@@ -230,7 +246,7 @@ class AVDecoder(nn.Module):
             feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
             # feature = torch.cat([agent_map, action_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
             # feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1), action_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
-        if self.model_type in {'CrossTransformer_v2'}:
+        if self.model_type in {'CrossTransformer_v2', 'Bayesian_output'}:
             feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
 
         elif self.model_type in {'SelfAttention'}:
@@ -240,7 +256,10 @@ class AVDecoder(nn.Module):
             feature = torch.cat([agent_map, agent_agent.unsqueeze(1).repeat(1, 3, 1)], dim=-1)
 
         actions = self.control(feature).view(-1, 3, self._future_steps, 2)
-        dummy = torch.ones(1, 1).to(self.cost[0].weight.device)
+        if self.model_type in {'Bayesian_output'}:
+            dummy = torch.ones(1, 1).to(self.cost[2].weight.device)
+        else:
+            dummy = torch.ones(1, 1).to(self.cost[0].weight.device)
         cost_function_weights = torch.cat([self.cost(dummy)[:, :7] * self.scale, self.constraint], dim=-1)
 
         return actions, cost_function_weights
@@ -267,7 +286,7 @@ class Score(nn.Module):
 
 # Build predictor
 class Predictor(nn.Module):
-    def __init__(self, future_steps, future_model='CrossTransformer'):
+    def __init__(self, future_steps, future_model='CrossTransformer_v2'):
         super(Predictor, self).__init__()
         self._future_steps = future_steps
         self.structure = future_model
@@ -292,7 +311,7 @@ class Predictor(nn.Module):
         self.score = Score()
 
         # ego-future-related layers
-        if future_model in {'CrossTransformer_v2'}:
+        if future_model in {'CrossTransformer_v2', 'Bayesian_output'}:
             self.action_agent = FutureTrajectoryTransformer_v2()
         else:
             self.action_agent = FutureTrajectoryTransformer()
@@ -340,7 +359,7 @@ class Predictor(nn.Module):
             predictions = self.predict(agent_map[:, :, 1:], agent_agent[:, 1:], neighbors[:, :, -1], action_agent)
             scores = self.score(map_feature, agent_agent, agent_map)
 
-        elif self.structure == 'CrossTransformer_v2':
+        elif self.structure in {'CrossTransformer_v2','Bayesian_output'}:
              
             action_mask = torch.full((actor_mask.shape[0], 1), True, dtype=torch.bool).to(actor_mask.device)  # action should always be considered
             actor_action_mask = torch.cat([actor_mask, action_mask], dim=1)
