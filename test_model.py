@@ -132,14 +132,17 @@ def read_file_to_list(file_path):
         return [line.strip() for line in file.readlines()]
 
 if __name__ == "__main__":
+
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     predictor = Predictor(50,future_model='DIPP').to(device)
+
     model_path = 'training_log/DIPP_10_percent_step_1_2024-07-12_11-28-05/model_40_0.8287.pth'
+
     predictor.load_state_dict(torch.load(model_path, map_location=device))
     trajectory_len, feature_len = 50, 9
     planner = MotionPlanner(trajectory_len, feature_len, device)
 
-    test_files_list = read_file_to_list('training_log/training_data_log/DIPP_10_percent_step_1_2024-07-12_11-28-05/selected_files_val.txt')
+    test_files_list = read_file_to_list('training_log/training_data_log/DIPP_10_percent_step_1_2024-07-12_11-28-05/selected_files_test.txt')
     # # Remove this substring
     # remove_substring = '/home/zxc/Documents/data/Waymo_sample/processed_normalized_10percent'
     # # Add this substring in front
@@ -150,7 +153,7 @@ if __name__ == "__main__":
 
     test_set = Inter_DrivingData(test_files_list)
 
-    test_loader = DataLoader(test_set, batch_size=32, shuffle=False, num_workers=1)
+    test_loader = DataLoader(test_set, batch_size=128, shuffle=False, num_workers=1)
     # 评估模型
     mean_loss, metrics = test_model(test_loader, predictor, planner, use_planning=True, device=device)
     # print(f'Mean Loss: {mean_loss}')
